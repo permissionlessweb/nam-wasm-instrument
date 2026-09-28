@@ -1,0 +1,112 @@
+name: Check
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  rustfmt:
+    runs-on: "ubuntu_20_64_core"
+    steps:
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: nightly
+          components: rustfmt
+
+      - uses: actions/checkout@v4
+
+      - name: Fmt
+        uses: actions-rs/cargo@v1
+        with:
+          toolchain: nightly
+          command: fmt
+          args: --all -- --check
+
+  clippy:
+    runs-on: "ubuntu_20_64_core"
+    steps:
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          components: clippy
+          default: true
+
+      - uses: actions/checkout@v4
+
+      - name: Clippy
+        uses: actions-rs/clippy-check@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          args: --all-targets --all-features -- -D warnings
+
+  build:
+    runs-on: "ubuntu_20_64_core"
+    steps:
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          target: wasm32-unknown-unknown
+          toolchain: stable
+          default: true
+
+      - uses: actions/checkout@v4
+
+      - name: Cargo build
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+
+      - name: Cargo build (std)
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --all-features
+
+      - name: Cargo build (no_std)
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --no-default-features
+
+      - name: Cargo build (wasm)
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --no-default-features --target wasm32-unknown-unknown
+
+  test:
+    strategy:
+      matrix:
+        os: ["ubuntu_20_64_core", "macos-latest", "windows-latest"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          default: true
+
+      - name: Set git to use LF
+        run: |
+          git config --global core.autocrlf false
+          git config --global core.eol lf
+
+      - uses: actions/checkout@v4
+
+      - name: Cargo test
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --all-features
+

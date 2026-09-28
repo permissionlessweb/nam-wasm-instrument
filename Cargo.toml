@@ -1,0 +1,47 @@
+[package]
+name = "nam-wasm-instrument"
+version = "0.5.2"
+edition = "2021"
+rust-version = "1.56.1"
+authors = ["Parity Technologies <admin@parity.io>"]
+license = "MIT OR Apache-2.0"
+description = "(Namada fork) Instrument and transform wasm modules."
+keywords = ["wasm", "webassembly", "blockchain", "gas-metering", "parity"]
+categories = ["wasm", "no-std"]
+repository = "https://github.com/anoma/nam-wasm-instrument"
+include = ["src/**/*", "LICENSE-*", "README.md"]
+
+[[bench]]
+name = "instrumentation"
+harness = false
+path = "benches/instrumentation.rs"
+
+[[bench]]
+name = "execution"
+harness = false
+path = "benches/execution.rs"
+
+[profile.bench]
+lto = "fat"
+codegen-units = 1
+
+[dependencies]
+parity-wasm = { version = "0.45", default-features = false }
+
+[dev-dependencies]
+criterion = "0.5"
+diff = "0.1"
+pretty_assertions = "1"
+rand = "0.8"
+wat = "1"
+wasmparser = "0.206"
+wasmprinter = "0.200"
+wasmi = "0.31"
+
+[features]
+default = ["std"]
+std = ["parity-wasm/std"]
+sign_ext = ["parity-wasm/sign_ext"]
+
+[lib]
+bench = false
