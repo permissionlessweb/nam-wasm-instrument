@@ -5,6 +5,12 @@ use parity_wasm::elements::{self, BlockType, Type};
 #[cfg(feature = "sign_ext")]
 use parity_wasm::elements::SignExtInstruction;
 
+#[cfg(feature = "bulk")]
+use parity_wasm::elements::BulkInstruction;
+
+#[cfg(feature = "simd")]
+use parity_wasm::elements::SimdInstruction;
+
 // The cost in stack items that should be charged per call of a function. This is
 // is a static cost that is added to each function call. This makes sense because even
 // if a function does not use any parameters or locals some stack space on the host
@@ -402,11 +408,312 @@ pub fn compute(func_idx: u32, module: &elements::Module) -> Result<u32, &'static
 				stack.pop_values(1)?;
 				stack.push_values(1)?;
 			},
+
+			// memory.init/copy/fill and table.init/copy take (dst, src, len).
+			#[cfg(feature = "bulk")]
+			Bulk(BulkInstruction::MemoryInit(_)) |
+			Bulk(BulkInstruction::MemoryCopy) |
+			Bulk(BulkInstruction::MemoryFill) |
+			Bulk(BulkInstruction::TableInit(_)) |
+			Bulk(BulkInstruction::TableCopy) => {
+				stack.pop_values(3)?;
+			},
+
+			#[cfg(feature = "bulk")]
+			Bulk(BulkInstruction::MemoryDrop(_)) |
+			Bulk(BulkInstruction::TableDrop(_)) => {},
+
+			#[cfg(feature = "simd")]
+			Simd(ref op) => simd_stack(op, &mut stack)?,
 		}
 		pc += 1;
 	}
 
 	Ok(max_height)
+}
+
+#[cfg(feature = "simd")]
+fn simd_stack(op: &SimdInstruction, stack: &mut Stack) -> Result<(), &'static str> {
+	use SimdInstruction::*;
+	match op {
+		V128Const(_) |
+		V128Load(_) |
+		V128Load8x8S(_) |
+		V128Load8x8U(_) |
+		V128Load16x4S(_) |
+		V128Load16x4U(_) |
+		V128Load32x2S(_) |
+		V128Load32x2U(_) |
+		V128Load8Splat(_) |
+		V128Load16Splat(_) |
+		V128Load32Splat(_) |
+		V128Load64Splat(_) |
+		V128Load32Zero(_) |
+		V128Load64Zero(_) => { stack.push_values(1)?; }
+		V128Store(_) |
+		V128Store8Lane(_, _) |
+		V128Store16Lane(_, _) |
+		V128Store32Lane(_, _) |
+		V128Store64Lane(_, _) => { stack.pop_values(1)?; }
+		I8x16Splat |
+		I16x8Splat |
+		I32x4Splat |
+		I64x2Splat |
+		F32x4Splat |
+		F64x2Splat |
+		I8x16ExtractLaneS(_) |
+		I8x16ExtractLaneU(_) |
+		I16x8ExtractLaneS(_) |
+		I16x8ExtractLaneU(_) |
+		I32x4ExtractLane(_) |
+		I64x2ExtractLane(_) |
+		F32x4ExtractLane(_) |
+		F64x2ExtractLane(_) |
+		V128Not |
+		I8x16AnyTrue |
+		I16x8AnyTrue |
+		I32x4AnyTrue |
+		I64x2AnyTrue |
+		I8x16AllTrue |
+		I16x8AllTrue |
+		I32x4AllTrue |
+		I64x2AllTrue |
+		F32x4Abs |
+		F64x2Abs |
+		F32x4Div |
+		F64x2Div |
+		F32x4Sqrt |
+		F64x2Sqrt |
+		F32x4ConvertSI32x4 |
+		F32x4ConvertUI32x4 |
+		F64x2ConvertSI64x2 |
+		F64x2ConvertUI64x2 |
+		I32x4TruncSF32x4Sat |
+		I32x4TruncUF32x4Sat |
+		I64x2TruncSF64x2Sat |
+		I64x2TruncUF64x2Sat |
+		V128AnyTrue |
+		V128Load8Lane(_, _) |
+		V128Load16Lane(_, _) |
+		V128Load32Lane(_, _) |
+		V128Load64Lane(_, _) |
+		F32x4DemoteF64x2Zero |
+		F64x2PromoteLowF32x4 |
+		I8x16Abs |
+		I8x16Popcnt |
+		I8x16Bitmask |
+		F32x4Ceil |
+		F32x4Floor |
+		F32x4Trunc |
+		F64x2Ceil |
+		F64x2Floor |
+		F64x2Trunc |
+		I16x8ExtaddPairwiseI8x16S |
+		I16x8ExtaddPairwiseI8x16U |
+		I32x4ExtaddPairwiseI16x8S |
+		I32x4ExtaddPairwiseI16x8U |
+		I16x8Abs |
+		I16x8Bitmask |
+		I16x8ExtendLowI8x16S |
+		I16x8ExtendHighI8x16S |
+		I16x8ExtendLowI8x16U |
+		I16x8ExtendHighI8x16U |
+		I32x4Abs |
+		I32x4Bitmask |
+		I32x4ExtendLowI16x8S |
+		I32x4ExtendHighI16x8S |
+		I32x4ExtendLowI16x8U |
+		I32x4ExtendHighI16x8U |
+		I64x2Abs |
+		I64x2Bitmask |
+		I64x2ExtendLowI32x4S |
+		I64x2ExtendHighI32x4S |
+		I64x2ExtendLowI32x4U |
+		I64x2ExtendHighI32x4U |
+		I32x4TruncSatF64x2SZero |
+		I32x4TruncSatF64x2UZero |
+		F64x2ConvertLowI32x4S |
+		F64x2ConvertLowI32x4U => { stack.pop_values(1)?; stack.push_values(1)?; }
+		I8x16ReplaceLane(_) |
+		I16x8ReplaceLane(_) |
+		I32x4ReplaceLane(_) |
+		I64x2ReplaceLane(_) |
+		F32x4ReplaceLane(_) |
+		F64x2ReplaceLane(_) |
+		V8x16Shuffle(_) |
+		I8x16Add |
+		I16x8Add |
+		I32x4Add |
+		I64x2Add |
+		I8x16Sub |
+		I16x8Sub |
+		I32x4Sub |
+		I64x2Sub |
+		I8x16Mul |
+		I16x8Mul |
+		I32x4Mul |
+		I64x2Mul |
+		I8x16Neg |
+		I16x8Neg |
+		I32x4Neg |
+		I64x2Neg |
+		I8x16AddSaturateS |
+		I8x16AddSaturateU |
+		I16x8AddSaturateS |
+		I16x8AddSaturateU |
+		I8x16SubSaturateS |
+		I8x16SubSaturateU |
+		I16x8SubSaturateS |
+		I16x8SubSaturateU |
+		I8x16Shl |
+		I16x8Shl |
+		I32x4Shl |
+		I64x2Shl |
+		I8x16ShrS |
+		I8x16ShrU |
+		I16x8ShrS |
+		I16x8ShrU |
+		I32x4ShrS |
+		I32x4ShrU |
+		I64x2ShrS |
+		I64x2ShrU |
+		V128And |
+		V128Or |
+		V128Xor |
+		I8x16Eq |
+		I16x8Eq |
+		I32x4Eq |
+		I64x2Eq |
+		F32x4Eq |
+		F64x2Eq |
+		I8x16Ne |
+		I16x8Ne |
+		I32x4Ne |
+		I64x2Ne |
+		F32x4Ne |
+		F64x2Ne |
+		I8x16LtS |
+		I8x16LtU |
+		I16x8LtS |
+		I16x8LtU |
+		I32x4LtS |
+		I32x4LtU |
+		I64x2LtS |
+		F32x4Lt |
+		F64x2Lt |
+		I8x16LeS |
+		I8x16LeU |
+		I16x8LeS |
+		I16x8LeU |
+		I32x4LeS |
+		I32x4LeU |
+		I64x2LeS |
+		F32x4Le |
+		F64x2Le |
+		I8x16GtS |
+		I8x16GtU |
+		I16x8GtS |
+		I16x8GtU |
+		I32x4GtS |
+		I32x4GtU |
+		I64x2GtS |
+		F32x4Gt |
+		F64x2Gt |
+		I8x16GeS |
+		I8x16GeU |
+		I16x8GeS |
+		I16x8GeU |
+		I32x4GeS |
+		I32x4GeU |
+		I64x2GeS |
+		F32x4Ge |
+		F64x2Ge |
+		F32x4Neg |
+		F64x2Neg |
+		F32x4Min |
+		F64x2Min |
+		F32x4Max |
+		F64x2Max |
+		F32x4Add |
+		F64x2Add |
+		F32x4Sub |
+		F64x2Sub |
+		F32x4Mul |
+		F64x2Mul |
+		I8x16Swizzle |
+		V128Andnot |
+		I8x16NarrowI16x8S |
+		I8x16NarrowI16x8U |
+		F32x4Nearest |
+		I8x16MinS |
+		I8x16MinU |
+		I8x16MaxS |
+		I8x16MaxU |
+		I8x16AvgrU |
+		I16x8Q15mulrSatS |
+		I16x8NarrowI32x4S |
+		I16x8NarrowI32x4U |
+		F64x2Nearest |
+		I16x8MinS |
+		I16x8MinU |
+		I16x8MaxS |
+		I16x8MaxU |
+		I16x8AvgrU |
+		I16x8ExtmulLowI8x16S |
+		I16x8ExtmulHighI8x16S |
+		I16x8ExtmulLowI8x16U |
+		I16x8ExtmulHighI8x16U |
+		I32x4MinS |
+		I32x4MinU |
+		I32x4MaxS |
+		I32x4MaxU |
+		I32x4DotI16x8S |
+		I32x4ExtmulLowI16x8S |
+		I32x4ExtmulHighI16x8S |
+		I32x4ExtmulLowI16x8U |
+		I32x4ExtmulHighI16x8U |
+		I64x2ExtmulLowI32x4S |
+		I64x2ExtmulHighI32x4S |
+		I64x2ExtmulLowI32x4U |
+		I64x2ExtmulHighI32x4U |
+		F32x4Pmin |
+		F32x4Pmax |
+		F64x2Pmin |
+		F64x2Pmax => { stack.pop_values(2)?; stack.push_values(1)?; }
+		V128Bitselect => { stack.pop_values(3)?; stack.push_values(1)?; }
+	}
+	Ok(())
+}
+#[cfg(all(test, feature = "bulk", feature = "simd"))]
+mod opcode_tests {
+	use parity_wasm::elements;
+
+	fn roundtrip(wat_src: &str) {
+		let wasm = wat::parse_str(wat_src).expect("wat");
+		let module: elements::Module = elements::deserialize_buffer(&wasm).expect("decode");
+		let out = crate::inject_stack_limiter(module, 4096, &Default::default()).expect("limit");
+		let bytes = elements::serialize(out).expect("encode");
+		elements::deserialize_buffer::<elements::Module>(&bytes).expect("redecode");
+	}
+
+	#[test]
+	fn bulk_memory_copy_passes_the_limiter() {
+		roundtrip(
+			r#"(module
+				(memory 1)
+				(func (export "c")
+					(memory.copy (i32.const 0) (i32.const 0) (i32.const 4))))"#,
+		);
+	}
+
+	#[test]
+	fn simd_trunc_sat_f64x2_passes_the_limiter() {
+		roundtrip(
+			r#"(module
+				(func (export "t") (param v128) (result v128)
+					(i32x4.trunc_sat_f64x2_s_zero (local.get 0))))"#,
+		);
+	}
 }
 
 #[cfg(test)]
