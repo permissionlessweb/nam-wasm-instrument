@@ -32,7 +32,7 @@ parity-wasm = { path = "vendor/parity-wasm", default-features = false, package =
 criterion = "0.5"
 diff = "0.1"
 pretty_assertions = "1"
-rand = "0.8"
+rand = "0.10"
 wat = "1"
 wasmparser = "0.206"
 wasmprinter = "0.200"
