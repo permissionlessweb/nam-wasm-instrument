@@ -1,6 +1,6 @@
 [package]
 name = "nam-wasm-instrument"
-version = "0.5.3-terp.1"
+version = "0.5.3-terp.2"
 edition = "2021"
 rust-version = "1.56.1"
 authors = ["Parity Technologies <admin@parity.io>"]

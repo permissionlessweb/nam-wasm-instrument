@@ -384,4 +384,84 @@ mod tests {
 			inject(module, 1024, &exempt_func_ids).expect("Failed to inject stack counter");
 		validate_module(module);
 	}
+
+	/// rustc emits section id 12 before code. Thunk generation rebuilds the
+	/// module; data count must stay in front of code or wasmparser rejects it.
+	#[test]
+	fn data_count_stays_before_code() {
+		use elements::{
+			CodeSection, ExportEntry, ExportSection, Func, FuncBody, FunctionSection, Instruction,
+			Instructions, Internal, MemorySection, MemoryType, Section, Type, TypeSection,
+			ValueType,
+		};
+
+		let module = elements::Module::new(vec![
+			Section::Type(TypeSection::with_types(vec![Type::Function(
+				elements::FunctionType::new(vec![ValueType::I32], vec![ValueType::I32]),
+			)])),
+			Section::Function(FunctionSection::with_entries(vec![Func::new(0)])),
+			Section::Memory(MemorySection::with_entries(vec![MemoryType::new(1, None)])),
+			Section::Export(ExportSection::with_entries(vec![ExportEntry::new(
+				"g".into(),
+				Internal::Function(0),
+			)])),
+			Section::DataCount(1),
+			Section::Code(CodeSection::with_bodies(vec![FuncBody::new(
+				vec![],
+				Instructions::new(vec![Instruction::GetLocal(0), Instruction::End]),
+			)])),
+			Section::Data(elements::DataSection::with_entries(vec![elements::DataSegment::new(
+				0,
+				Some(elements::InitExpr::new(vec![Instruction::I32Const(0), Instruction::End])),
+				vec![0x11],
+			)])),
+			Section::Custom(elements::CustomSection::new("producers".into(), vec![1])),
+		]);
+		let exempt = utils::imported_function_ids(&module);
+		let module = inject(module, 1024, &exempt).expect("inject");
+		let binary = elements::serialize(module).expect("serialize");
+		let mut saw_count = false;
+		let mut saw_code = false;
+		let mut i = 8;
+		while i < binary.len() {
+			let id = binary[i];
+			i += 1;
+			let mut len = 0u32;
+			let mut shift = 0;
+			loop {
+				let b = binary[i];
+				i += 1;
+				len |= u32::from(b & 0x7f) << shift;
+				if b < 128 {
+					break;
+				}
+				shift += 7;
+			}
+			if id == 12 {
+				assert!(!saw_code, "data count landed after code");
+				saw_count = true;
+			}
+			if id == 10 {
+				assert!(saw_count, "code appeared before data count");
+				saw_code = true;
+			}
+			i += len as usize;
+		}
+		assert!(saw_count && saw_code);
+		validate_module(elements::deserialize_buffer(&binary).expect("redecode"));
+	}
+
+	#[test]
+	#[ignore = "set ICS08_WASM to cw_ics08_wasm_terp.wasm"]
+	fn ics08_artifact_stays_ordered_when_path_set() {
+		let Ok(path) = std::env::var("ICS08_WASM") else {
+			return;
+		};
+		let wasm = std::fs::read(&path).unwrap_or_else(|e| panic!("read {path}: {e}"));
+		let module: elements::Module = elements::deserialize_buffer(&wasm).expect("decode guest");
+		let exempt = utils::imported_function_ids(&module);
+		let module = inject(module, 4096, &exempt).expect("inject");
+		let binary = elements::serialize(module).expect("serialize");
+		wasmparser::validate(&binary).unwrap_or_else(|e| panic!("wasmparser: {e}"));
+	}
 }

@@ -420,8 +420,7 @@ pub fn compute(func_idx: u32, module: &elements::Module) -> Result<u32, &'static
 			},
 
 			#[cfg(feature = "bulk")]
-			Bulk(BulkInstruction::MemoryDrop(_)) |
-			Bulk(BulkInstruction::TableDrop(_)) => {},
+			Bulk(BulkInstruction::MemoryDrop(_)) | Bulk(BulkInstruction::TableDrop(_)) => {},
 
 			#[cfg(feature = "simd")]
 			Simd(ref op) => simd_stack(op, &mut stack)?,
@@ -436,25 +435,19 @@ pub fn compute(func_idx: u32, module: &elements::Module) -> Result<u32, &'static
 fn simd_stack(op: &SimdInstruction, stack: &mut Stack) -> Result<(), &'static str> {
 	use SimdInstruction::*;
 	match op {
-		V128Const(_) |
-		V128Load(_) |
-		V128Load8x8S(_) |
-		V128Load8x8U(_) |
-		V128Load16x4S(_) |
-		V128Load16x4U(_) |
-		V128Load32x2S(_) |
-		V128Load32x2U(_) |
-		V128Load8Splat(_) |
-		V128Load16Splat(_) |
-		V128Load32Splat(_) |
-		V128Load64Splat(_) |
-		V128Load32Zero(_) |
-		V128Load64Zero(_) => { stack.push_values(1)?; }
+		V128Const(_) | V128Load(_) | V128Load8x8S(_) | V128Load8x8U(_) | V128Load16x4S(_) |
+		V128Load16x4U(_) | V128Load32x2S(_) | V128Load32x2U(_) | V128Load8Splat(_) |
+		V128Load16Splat(_) | V128Load32Splat(_) | V128Load64Splat(_) | V128Load32Zero(_) |
+		V128Load64Zero(_) => {
+			stack.push_values(1)?;
+		},
 		V128Store(_) |
 		V128Store8Lane(_, _) |
 		V128Store16Lane(_, _) |
 		V128Store32Lane(_, _) |
-		V128Store64Lane(_, _) => { stack.pop_values(1)?; }
+		V128Store64Lane(_, _) => {
+			stack.pop_values(1)?;
+		},
 		I8x16Splat |
 		I16x8Splat |
 		I32x4Splat |
@@ -533,7 +526,10 @@ fn simd_stack(op: &SimdInstruction, stack: &mut Stack) -> Result<(), &'static st
 		I32x4TruncSatF64x2SZero |
 		I32x4TruncSatF64x2UZero |
 		F64x2ConvertLowI32x4S |
-		F64x2ConvertLowI32x4U => { stack.pop_values(1)?; stack.push_values(1)?; }
+		F64x2ConvertLowI32x4U => {
+			stack.pop_values(1)?;
+			stack.push_values(1)?;
+		},
 		I8x16ReplaceLane(_) |
 		I16x8ReplaceLane(_) |
 		I32x4ReplaceLane(_) |
@@ -679,8 +675,14 @@ fn simd_stack(op: &SimdInstruction, stack: &mut Stack) -> Result<(), &'static st
 		F32x4Pmin |
 		F32x4Pmax |
 		F64x2Pmin |
-		F64x2Pmax => { stack.pop_values(2)?; stack.push_values(1)?; }
-		V128Bitselect => { stack.pop_values(3)?; stack.push_values(1)?; }
+		F64x2Pmax => {
+			stack.pop_values(2)?;
+			stack.push_values(1)?;
+		},
+		V128Bitselect => {
+			stack.pop_values(3)?;
+			stack.push_values(1)?;
+		},
 	}
 	Ok(())
 }

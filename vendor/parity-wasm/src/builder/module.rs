@@ -33,6 +33,8 @@ struct ModuleScaffold {
 	pub export: elements::ExportSection,
 	pub start: Option<u32>,
 	pub element: elements::ElementSection,
+	/// Passive-segment count. Must be serialized after element and before code.
+	pub data_count: Option<u32>,
 	pub code: elements::CodeSection,
 	pub data: elements::DataSection,
 	pub other: Vec<elements::Section>,
@@ -49,6 +51,7 @@ impl From<elements::Module> for ModuleScaffold {
 		let mut export: Option<elements::ExportSection> = None;
 		let mut start: Option<u32> = None;
 		let mut element: Option<elements::ElementSection> = None;
+		let mut data_count: Option<u32> = None;
 		let mut code: Option<elements::CodeSection> = None;
 		let mut data: Option<elements::DataSection> = None;
 
@@ -83,6 +86,9 @@ impl From<elements::Module> for ModuleScaffold {
 				elements::Section::Element(sect) => {
 					element = Some(sect);
 				},
+				elements::Section::DataCount(count) => {
+					data_count = Some(count);
+				},
 				elements::Section::Code(sect) => {
 					code = Some(sect);
 				},
@@ -103,6 +109,7 @@ impl From<elements::Module> for ModuleScaffold {
 			export: export.unwrap_or_default(),
 			start,
 			element: element.unwrap_or_default(),
+			data_count,
 			code: code.unwrap_or_default(),
 			data: data.unwrap_or_default(),
 			other,
@@ -148,6 +155,12 @@ impl From<ModuleScaffold> for elements::Module {
 		let element = module.element;
 		if !element.entries().is_empty() {
 			sections.push(elements::Section::Element(element));
+		}
+		// Id 12 is numerically after code, but the binary must carry it first.
+		// `other` is appended after data, and wasmparser then reports the
+		// data-count section as out of order.
+		if let Some(count) = module.data_count {
+			sections.push(elements::Section::DataCount(count));
 		}
 		let code = module.code;
 		if !code.bodies().is_empty() {
