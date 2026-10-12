@@ -451,6 +451,57 @@ mod tests {
 		validate_module(elements::deserialize_buffer(&binary).expect("redecode"));
 	}
 
+	/// rustc 1.98 emits call_indirect's table index as a 5-byte LEB of 0.
+	/// The reader must accept that and write a single 0x00 back.
+	#[test]
+	fn call_indirect_five_byte_table_index_round_trips() {
+		let wasm = long_table_call_indirect_module();
+		let module: elements::Module = elements::deserialize_buffer(&wasm).expect("decode long table index");
+		let exempt = utils::imported_function_ids(&module);
+		let module = inject(module, 1024, &exempt).expect("inject");
+		let binary = elements::serialize(module).expect("serialize");
+		assert!(
+			!binary.windows(5).any(|w| w == [0x80, 0x80, 0x80, 0x80, 0x00]),
+			"rewritten module still has a 5-byte zero immediate"
+		);
+		let again: elements::Module = elements::deserialize_buffer(&binary).expect("redecode");
+		validate_module(again);
+	}
+
+	#[test]
+	fn call_indirect_nonzero_table_is_rejected() {
+		let mut wasm = long_table_call_indirect_module();
+		// Last immediate of the 5-byte table index 0 is the terminating 0x00.
+		// A single-byte 1 is a non-zero table.
+		let pos = wasm.iter().rposition(|b| *b == 0x0b).expect("end opcode");
+		wasm[pos - 1] = 0x01;
+		let err = elements::deserialize_buffer::<elements::Module>(&wasm).unwrap_err();
+		let text = err.to_string();
+		assert!(text.contains("Invalid table reference"), "{text}");
+	}
+
+	fn long_table_call_indirect_module() -> Vec<u8> {
+		let five_zero = [0x80u8, 0x80, 0x80, 0x80, 0x00];
+		let mut body = Vec::new();
+		body.extend_from_slice(&[0x41, 0x00]); // i32.const 0, the callee index
+		body.push(0x11);
+		body.extend_from_slice(&five_zero); // type index 0
+		body.extend_from_slice(&five_zero); // table index 0
+		body.push(0x0b);
+		let mut code_payload = vec![0x01, (body.len() + 1) as u8, 0x00];
+		code_payload.extend_from_slice(&body);
+		let mut wasm = vec![
+			0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, // magic, version
+			0x01, 0x04, 0x01, 0x60, 0x00, 0x00, // type
+			0x03, 0x02, 0x01, 0x00, // function
+			0x04, 0x04, 0x01, 0x70, 0x00, 0x01, // table funcref min 1
+		];
+		wasm.push(0x0a);
+		wasm.push(code_payload.len() as u8);
+		wasm.extend_from_slice(&code_payload);
+		wasm
+	}
+
 	#[test]
 	#[ignore = "set ICS08_WASM to cw_ics08_wasm_terp.wasm"]
 	fn ics08_artifact_stays_ordered_when_path_set() {

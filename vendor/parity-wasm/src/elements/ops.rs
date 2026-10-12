@@ -1287,13 +1287,17 @@ impl Deserialize for Instruction {
 			RETURN => Return,
 			CALL => Call(VarUint32::deserialize(reader)?.into()),
 			CALLINDIRECT => {
+				// reference-types: typeidx and tableidx are both LEB128.
+				// rustc/LLVM writes a 5-byte zero (first byte 0x80). Only table 0
+				// exists here; the stored immediate stays the single byte 0x00.
 				let signature: u32 = VarUint32::deserialize(reader)?.into();
-				let table_ref: u8 = Uint8::deserialize(reader)?.into();
-				if table_ref != 0 {
-					return Err(Error::InvalidTableReference(table_ref))
+				let table_idx: u32 = VarUint32::deserialize(reader)?.into();
+				if table_idx != 0 {
+					let shown = u8::try_from(table_idx).unwrap_or(u8::MAX);
+					return Err(Error::InvalidTableReference(shown))
 				}
 
-				CallIndirect(signature, table_ref)
+				CallIndirect(signature, 0)
 			},
 			DROP => Drop,
 			SELECT => Select,
